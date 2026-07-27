@@ -14,9 +14,7 @@ try:
             super().add_fields(log_record, record, message_dict)
             log_record["level"] = record.levelname
             log_record["logger"] = record.name
-            log_record["request_id"] = request_id_var.get()
-            if "timestamp" not in log_record:
-                log_record["timestamp"] = self.formatTime(record, self.datefmt)
+            log_record["timestamp"] = self.formatTime(record, self.datefmt)
 except ImportError:
     class CustomJSONFormatter(logging.Formatter):
         def format(self, record: logging.LogRecord) -> str:
