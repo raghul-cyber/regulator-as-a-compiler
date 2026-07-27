@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.db.session import get_db
 from app.db.repository import BaseRepository
 from app.models.users import User, UserRole
+from app.models.audit import AuditLog
 from app.core.auth import get_current_user, require_role
 from app.schemas.user import UserResponse, UserUpdateRole
 
@@ -46,6 +47,19 @@ async def update_user_role(
     # Prevent removing the last admin (simplified check, assumes there's logic if needed)
     
     updated_user = await repo.update(user_id, {"role": role_update.role})
+    
+    audit_log = AuditLog(
+        id=uuid4(),
+        org_id=admin_user.org_id,
+        actor_id=admin_user.id,
+        action="user.role_updated",
+        entity_type="user",
+        entity_id=user_id,
+        metadata_payload={"new_role": role_update.role.value if hasattr(role_update.role, 'value') else str(role_update.role)}
+    )
+    repo.session.add(audit_log)
+    await repo.session.commit()
+    
     return updated_user
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -65,4 +79,17 @@ async def remove_user_from_org(
         raise HTTPException(status_code=400, detail="Cannot remove yourself")
         
     await repo.delete(user_id)
+    
+    audit_log = AuditLog(
+        id=uuid4(),
+        org_id=admin_user.org_id,
+        actor_id=admin_user.id,
+        action="user.deleted",
+        entity_type="user",
+        entity_id=user_id,
+        metadata_payload={}
+    )
+    repo.session.add(audit_log)
+    await repo.session.commit()
+    
     return None

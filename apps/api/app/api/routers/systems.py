@@ -9,6 +9,7 @@ from app.db.session import get_db
 from app.core.auth import get_current_user
 from app.models.users import User, UserRole
 from app.models.policies import SystemMapping
+from app.models.audit import AuditLog
 
 router = APIRouter()
 
@@ -51,6 +52,17 @@ async def create_system(
         mapped_requirement_ids=payload.mapped_requirement_ids
     )
     db.add(system)
+    
+    audit_log = AuditLog(
+        id=uuid4(),
+        org_id=user.org_id,
+        actor_id=user.id,
+        action="system_mapping.created",
+        entity_type="system_mapping",
+        entity_id=system.id,
+        metadata_payload={"system_name": payload.system_name}
+    )
+    db.add(audit_log)
     await db.commit()
     await db.refresh(system)
     return system
@@ -74,6 +86,16 @@ async def update_system(
     system.system_name = payload.system_name
     system.mapped_requirement_ids = payload.mapped_requirement_ids
     
+    audit_log = AuditLog(
+        id=uuid4(),
+        org_id=user.org_id,
+        actor_id=user.id,
+        action="system_mapping.updated",
+        entity_type="system_mapping",
+        entity_id=system.id,
+        metadata_payload={"system_name": payload.system_name}
+    )
+    db.add(audit_log)
     await db.commit()
     await db.refresh(system)
     return system
@@ -94,5 +116,16 @@ async def delete_system(
         raise HTTPException(status_code=404, detail="System not found")
         
     await db.delete(system)
+    
+    audit_log = AuditLog(
+        id=uuid4(),
+        org_id=user.org_id,
+        actor_id=user.id,
+        action="system_mapping.deleted",
+        entity_type="system_mapping",
+        entity_id=id,
+        metadata_payload={"system_name": system.system_name}
+    )
+    db.add(audit_log)
     await db.commit()
     return {"message": "System mapping deleted successfully"}

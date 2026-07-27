@@ -1,6 +1,6 @@
 import secrets
 from datetime import datetime, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +8,7 @@ from sqlalchemy import select
 from app.db.session import get_db
 from app.models.api_keys import ApiKey
 from app.models.users import User, UserRole
+from app.models.audit import AuditLog
 from app.core.auth import get_current_user, require_role
 from app.core.api_keys import hash_api_key
 
@@ -48,6 +49,17 @@ async def create_api_key(
         scopes=req.scopes
     )
     db.add(new_key)
+    
+    audit_log = AuditLog(
+        id=uuid4(),
+        org_id=user.org_id,
+        actor_id=user.id,
+        action="api_key.created",
+        entity_type="api_key",
+        entity_id=new_key.id,
+        metadata_payload={"scopes": req.scopes}
+    )
+    db.add(audit_log)
     await db.commit()
     await db.refresh(new_key)
     
@@ -93,4 +105,15 @@ async def revoke_api_key(
         raise HTTPException(status_code=400, detail="API Key is already revoked")
         
     key.revoked_at = datetime.now(timezone.utc)
+    
+    audit_log = AuditLog(
+        id=uuid4(),
+        org_id=user.org_id,
+        actor_id=user.id,
+        action="api_key.revoked",
+        entity_type="api_key",
+        entity_id=key.id,
+        metadata_payload={}
+    )
+    db.add(audit_log)
     await db.commit()

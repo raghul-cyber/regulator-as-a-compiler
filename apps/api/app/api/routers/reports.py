@@ -14,6 +14,7 @@ from app.models.users import User
 from app.models.requirements import Requirement, ValidationStatus
 from app.models.regulations import RegulationVersion, Regulation
 from app.models.reports import Report, ReportType
+from app.models.audit import AuditLog
 from app.pipelines.reporting import ReportGenerator
 from app.core.storage import storage_service
 
@@ -101,6 +102,17 @@ async def generate_report(
         payload={"report_id": str(report.id)}
     )
     db.add(job)
+    
+    audit_log = AuditLog(
+        id=uuid4(),
+        org_id=user.org_id,
+        actor_id=user.id,
+        action="report.requested",
+        entity_type="report",
+        entity_id=report.id,
+        metadata_payload={"report_type": payload.report_type.value if hasattr(payload.report_type, 'value') else str(payload.report_type)}
+    )
+    db.add(audit_log)
     await db.commit()
     
     # Enqueue task

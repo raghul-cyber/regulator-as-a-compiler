@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from uuid import UUID
+from uuid import UUID, uuid4
 from pydantic import BaseModel
 from datetime import datetime
 from typing import List, Optional
@@ -10,6 +10,7 @@ from app.db.session import get_db
 from app.core.auth import get_current_user
 from app.models.users import User, UserRole
 from app.models.jobs import BackgroundJob, JobStatus
+from app.models.audit import AuditLog
 
 router = APIRouter()
 
