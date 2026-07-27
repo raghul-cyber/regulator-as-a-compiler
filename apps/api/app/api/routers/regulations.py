@@ -15,6 +15,8 @@ from app.models.regulations import Regulation, RegulationVersion
 from app.models.documents import SourceDocument, FileType
 from app.models.audit import AuditLog
 from app.core.storage import storage_service
+from app.pipelines.extraction import extract_document_text
+from app.pipelines.segmentation import segment_document
 
 router = APIRouter(prefix="/api/regulations", tags=["regulations"])
 
@@ -131,6 +133,22 @@ async def upload_regulation(
     db.add(audit_log)
 
     await db.commit()
+
+    # --- Phase 4: Synchronous pipeline execution ---
+    # In a later phase, this will be dispatched to Celery via job_id.
+    # For now, we run it inline.
+    try:
+        await extract_document_text(source_doc_id, db)
+        await segment_document(source_doc_id, db)
+        
+        # Update RegulationVersion status-like label
+        reg_version.version_label = "Extracted"
+        await db.commit()
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Pipeline failed for {source_doc_id}: {e}")
+        reg_version.version_label = "Failed Extraction"
+        await db.commit()
 
     return RegulationUploadResponse(
         regulation_id=regulation.id,
