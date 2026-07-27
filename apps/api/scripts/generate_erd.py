@@ -39,7 +39,7 @@ def generate_mermaid_erd():
                 keys.append("PK")
             if col.foreign_keys:
                 keys.append("FK")
-            key_str = " ".join(keys)
+            key_str = ", ".join(keys)
             
             line = f"        {type_str} {col_name}"
             if key_str:

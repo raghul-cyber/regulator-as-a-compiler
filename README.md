@@ -42,17 +42,17 @@ The repository is organized as a unified monorepo running a high-performance **F
 
 ```mermaid
 graph TD
-    Browser["Client Browser / Developer App"] -->|HTTPS / REST| Web["Next.js 14 Web App (apps/web)"]
-    Browser -->|HTTPS / REST| API["FastAPI Backend (apps/api)"]
-    Browser <-->|Auth Tokens / OIDC| Clerk["Clerk Authentication"]
+    Browser["Client Browser or Developer App"] -->|HTTPS and REST| Web["Next.js 14 Web App"]
+    Browser -->|HTTPS and REST| API["FastAPI Backend"]
+    Browser <-->|Auth Tokens and OIDC| Clerk["Clerk Authentication"]
     API <-->|Auth Validation| Clerk
-    API -->|Async SQL / pgvector| DB[(PostgreSQL 16 Database)]
-    API -->|Task Enqueue / PubSub| Redis[(Redis Broker & Cache)]
-    API -->|PutObject / GetObject| S3["S3 / Local Storage Service"]
-    Redis -->|Task Dequeue| Worker["Celery Workers (apps/api/app/worker)"]
-    Worker -->|Async SQL / pgvector| DB
-    Worker -->|Read/Write Documents| S3
-    Worker -->|API Calls (JSON Schema)| LLM["LLM Provider (OpenAI / GPT-4o)"]
+    API -->|Async SQL with pgvector| DB[("PostgreSQL 16 Database")]
+    API -->|Task Enqueue and PubSub| Redis[("Redis Broker and Cache")]
+    API -->|PutObject and GetObject| S3["S3 or Local Storage Service"]
+    Redis -->|Task Dequeue| Worker["Celery Workers"]
+    Worker -->|Async SQL with pgvector| DB
+    Worker -->|Read and Write Documents| S3
+    Worker -->|API Calls with JSON Schema| LLM["LLM Provider - OpenAI GPT-4o"]
 ```
 
 ### B. Regulatory Ingestion Pipeline
@@ -221,7 +221,7 @@ erDiagram
         Timestamp updated_at
     }
     requirement_embeddings {
-        UUID requirement_id PK FK
+        UUID requirement_id PK, FK
         Vector embedding
         String model_used
         Timestamp created_at
