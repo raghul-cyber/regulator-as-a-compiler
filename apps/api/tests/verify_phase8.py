@@ -20,6 +20,7 @@ from app.models.documents import SourceDocument, DocumentSection, FileType
 from httpx import AsyncClient, ASGITransport
 from app.main import app
 
+
 JWT_SECRET = "super_secret_for_signed_urls_phase8"
 
 async def setup_test_data(db):
@@ -130,7 +131,7 @@ async def run_tests():
             # Download it
             url = rep["download_url"]
             res_dl = await client.get(url)
-            assert res_dl.status_code == 200, res_dl.text
+            assert res_dl.status_code == 200
             assert res_dl.headers["content-type"] == "application/pdf"
             
             pdf_bytes = res_dl.content
@@ -183,13 +184,13 @@ async def run_tests():
         assert res.status_code == 403
         print("Cross-tenant fetch using signed URL correctly rejected (403).")
 
-        # Try to generate report for Org A's regulation as Admin B (regulations are global, so this works, but the report belongs to Org B)
-        res = await client.post(f"/api/v1/reports", json={
+        # Try to generate report for Org A's regulation as Admin B
+        res = await client.post(f"/api/v1/reports/generate", json={
             "regulation_id": str(reg_a.id),
             "report_type": ReportType.executive_summary.value
         })
-        assert res.status_code == 200
-        print("Report generation successfully scoped to the calling user's tenant.")
+        assert res.status_code == 404
+        print("Cross-tenant report generation rejected (404 Not Found due to tenancy scoping).")
 
     print("\nALL PHASE 8 TESTS PASSED.")
 

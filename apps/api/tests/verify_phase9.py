@@ -15,9 +15,8 @@ from app.models.users import User, UserRole
 from app.models.regulations import Regulation, RegulationVersion
 from app.models.requirements import Requirement, ValidationStatus, RequirementType, Severity
 from app.models.api_keys import ApiKey
-
 async def setup_test_data():
-    async with AsyncSessionLocal() as db:
+    async with async_session() as db:
         # Create Org & Admin
         org = Organization(name="Test Org 9", plan="trial")
         db.add(org)
@@ -28,22 +27,12 @@ async def setup_test_data():
         await db.flush()
         
         # Create Regulation & Requirements
-        reg = Regulation(name="GDPR_Phase9", jurisdiction="EU", source_url="")
+        reg = Regulation(name="GDPR_Phase9", jurisdiction="EU")
         db.add(reg)
         await db.flush()
         
-        import datetime
-        from app.models.documents import SourceDocument, DocumentSection, FileType
-        ver = RegulationVersion(regulation_id=reg.id, version_label="v1", source_document_id=None, published_date=datetime.date.today(), ingested_at=datetime.datetime.now(datetime.timezone.utc))
+        ver = RegulationVersion(regulation_id=reg.id, version_label="v1", source_document_id=None)
         db.add(ver)
-        await db.flush()
-        
-        doc = SourceDocument(regulation_version_id=ver.id, file_type=FileType.pdf, storage_path="x", raw_text="x", ocr_used=False, page_count=1)
-        db.add(doc)
-        await db.flush()
-        
-        sec = DocumentSection(source_document_id=doc.id, reference_label="Article 1", raw_text="x", order_index=1)
-        db.add(sec)
         await db.flush()
         
         # Add 3 Requirements: 2 Approved, 1 Draft
@@ -52,15 +41,13 @@ async def setup_test_data():
             status = ValidationStatus.approved if i < 2 else ValidationStatus.draft
             req = Requirement(
                 regulation_version_id=ver.id,
-                section_id=sec.id,
+                section_id=None,
                 type=RequirementType.obligation,
                 title=f"Req {i}",
                 description="desc",
-                conditions={}, actions={}, references={},
+                conditions={}, actions={},
                 severity=Severity.high,
-                validation_status=status,
-                evidence_required=False,
-                confidence_score=0.99
+                validation_status=status
             )
             db.add(req)
             reqs.append(req)
@@ -84,20 +71,19 @@ async def run_tests():
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         
         print("--- 1 & 2. API Key Creation & Scopes & Hashes ---")
-        fake_header = {"Authorization": "Bearer fake_clerk_token"}
         # Create keys
-        res = await client.post("/api/v1/settings/api-keys/", json={"scopes": ["read-only"]}, headers=fake_header)
-        assert res.status_code == 200, f"Error: {res.status_code} {res.text}"
+        res = await client.post("/api/v1/settings/api-keys", json={"scopes": ["read-only"]})
+        assert res.status_code == 200
         key_read = res.json()["raw_key"]
         
-        res = await client.post("/api/v1/settings/api-keys/", json={"scopes": ["check-compliance"]}, headers=fake_header)
+        res = await client.post("/api/v1/settings/api-keys", json={"scopes": ["check-compliance"]})
         key_check = res.json()["raw_key"]
         
-        res = await client.post("/api/v1/settings/api-keys/", json={"scopes": ["admin"]}, headers=fake_header)
+        res = await client.post("/api/v1/settings/api-keys", json={"scopes": ["admin"]})
         key_admin = res.json()["raw_key"]
         
         # Verify DB only stores hash
-        async with AsyncSessionLocal() as db:
+        async with async_session() as db:
             keys = (await db.execute(select(ApiKey).where(ApiKey.org_id == org.id))).scalars().all()
             for k in keys:
                 assert not k.key_hash.startswith("sk_live_")
@@ -114,17 +100,17 @@ async def run_tests():
         
         # Admin trying both
         res = await client.get(f"/api/v1/policy/{reg.id}", headers={"Authorization": f"Bearer {key_admin}"})
-        assert res.status_code == 200, f"Admin can read: {res.text}"
+        assert res.status_code == 200, "Admin can read"
         print("Scopes properly enforced.")
 
         print("--- 3. Key Revocation ---")
         # Get list of keys to find ID
-        res = await client.get("/api/v1/settings/api-keys/", headers=fake_header)
+        res = await client.get("/api/v1/settings/api-keys")
         assert res.status_code == 200
         keys_list = res.json()
         target_key_id = keys_list[0]["id"]
         
-        res = await client.delete(f"/api/v1/settings/api-keys/{target_key_id}", headers=fake_header)
+        res = await client.delete(f"/api/v1/settings/api-keys/{target_key_id}")
         assert res.status_code == 204
         
         # It was the read-only key, let's try a request that requires admin just to check if it's 401 (revoked)
@@ -146,7 +132,7 @@ async def run_tests():
             elif res.status_code == 429:
                 limited = True
                 break
-        assert success_count <= 10, f"Expected <= 10 successful requests, got {success_count}"
+        assert success_count == 10
         assert limited == True
         print(f"Rate limits enforced: {success_count} succeeded, throttled at 11th request.")
 

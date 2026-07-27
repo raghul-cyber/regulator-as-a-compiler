@@ -12,6 +12,13 @@ from app.models.jobs import BackgroundJob, JobStatus
 from app.models.reports import Report, Notification
 from app.models.policies import ComplianceCheck, ComplianceResult
 from app.models.webhooks import Webhook
+from app.db.session import engine
+
+async def with_clean_engine(coro):
+    try:
+        return await coro
+    finally:
+        await engine.dispose()
 
 logger = logging.getLogger(__name__)
 
@@ -60,20 +67,26 @@ async def _run_ingestion_logic(reg_version_id: str, source_doc_id: str, previous
             regulation.current_version_id = UUID(reg_version_id)
             await db.commit()
 
+async def _run_ingestion_task(job_id: str, reg_version_id: str, source_doc_id: str, previous_version_id: str = None):
+    await _update_job_status(job_id, JobStatus.running)
+    try:
+        await _run_ingestion_logic(reg_version_id, source_doc_id, previous_version_id)
+        await _update_job_status(job_id, JobStatus.completed)
+    except Exception as e:
+        raise e
+
 @celery_app.task(bind=True, max_retries=3)
 def task_run_ingestion(self, job_id: str, reg_version_id: str, source_doc_id: str, previous_version_id: str = None):
     logger.info(f"Starting ingestion job {job_id}")
-    asyncio.run(_update_job_status(job_id, JobStatus.running))
     try:
-        asyncio.run(_run_ingestion_logic(reg_version_id, source_doc_id, previous_version_id))
-        asyncio.run(_update_job_status(job_id, JobStatus.completed))
+        asyncio.run(with_clean_engine(_run_ingestion_task(job_id, reg_version_id, source_doc_id, previous_version_id)))
         logger.info(f"Completed ingestion job {job_id}")
     except Exception as e:
         logger.error(f"Ingestion job failed: {e}")
         try:
             self.retry(countdown=2 ** self.request.retries)
         except MaxRetriesExceededError:
-            asyncio.run(_update_job_status(job_id, JobStatus.dead_letter, str(e)))
+            asyncio.run(with_clean_engine(_update_job_status(job_id, JobStatus.dead_letter, str(e))))
             raise e
 
 async def _run_compliance_logic(check_id: str):
@@ -90,18 +103,24 @@ async def _run_compliance_logic(check_id: str):
         check.violations = {}
         await db.commit()
 
+async def _run_compliance_task(job_id: str, check_id: str):
+    await _update_job_status(job_id, JobStatus.running)
+    try:
+        await _run_compliance_logic(check_id)
+        await _update_job_status(job_id, JobStatus.completed)
+    except Exception as e:
+        raise e
+
 @celery_app.task(bind=True, max_retries=3)
 def task_check_compliance(self, job_id: str, check_id: str):
     logger.info(f"Starting compliance check job {job_id}")
-    asyncio.run(_update_job_status(job_id, JobStatus.running))
     try:
-        asyncio.run(_run_compliance_logic(check_id))
-        asyncio.run(_update_job_status(job_id, JobStatus.completed))
+        asyncio.run(with_clean_engine(_run_compliance_task(job_id, check_id)))
     except Exception as e:
         try:
             self.retry(countdown=2 ** self.request.retries)
         except MaxRetriesExceededError:
-            asyncio.run(_update_job_status(job_id, JobStatus.dead_letter, str(e)))
+            asyncio.run(with_clean_engine(_update_job_status(job_id, JobStatus.dead_letter, str(e))))
             raise e
 
 async def _run_report_logic(report_id: str):
@@ -145,18 +164,24 @@ async def _run_report_logic(report_id: str):
         report.storage_path = storage_path
         await db.commit()
 
+async def _run_report_task(job_id: str, report_id: str):
+    await _update_job_status(job_id, JobStatus.running)
+    try:
+        await _run_report_logic(report_id)
+        await _update_job_status(job_id, JobStatus.completed)
+    except Exception as e:
+        raise e
+
 @celery_app.task(bind=True, max_retries=3)
 def task_generate_report(self, job_id: str, report_id: str):
     logger.info(f"Starting report generation job {job_id}")
-    asyncio.run(_update_job_status(job_id, JobStatus.running))
     try:
-        asyncio.run(_run_report_logic(report_id))
-        asyncio.run(_update_job_status(job_id, JobStatus.completed))
+        asyncio.run(with_clean_engine(_run_report_task(job_id, report_id)))
     except Exception as e:
         try:
             self.retry(countdown=2 ** self.request.retries)
         except MaxRetriesExceededError:
-            asyncio.run(_update_job_status(job_id, JobStatus.dead_letter, str(e)))
+            asyncio.run(with_clean_engine(_update_job_status(job_id, JobStatus.dead_letter, str(e))))
             raise e
 
 async def _dispatch_webhook_logic(notification_id: str):
@@ -192,16 +217,22 @@ async def _dispatch_webhook_logic(notification_id: str):
         notification.delivered_at = datetime.now(timezone.utc)
         await db.commit()
 
+async def _dispatch_notification_task(job_id: str, notification_id: str):
+    await _update_job_status(job_id, JobStatus.running)
+    try:
+        await _dispatch_webhook_logic(notification_id)
+        await _update_job_status(job_id, JobStatus.completed)
+    except Exception as e:
+        raise e
+
 @celery_app.task(bind=True, max_retries=3)
 def task_dispatch_notification(self, job_id: str, notification_id: str):
     logger.info(f"Starting notification dispatch job {job_id}")
-    asyncio.run(_update_job_status(job_id, JobStatus.running))
     try:
-        asyncio.run(_dispatch_webhook_logic(notification_id))
-        asyncio.run(_update_job_status(job_id, JobStatus.completed))
+        asyncio.run(with_clean_engine(_dispatch_notification_task(job_id, notification_id)))
     except Exception as e:
         try:
             self.retry(countdown=2 ** self.request.retries)
         except MaxRetriesExceededError:
-            asyncio.run(_update_job_status(job_id, JobStatus.dead_letter, str(e)))
+            asyncio.run(with_clean_engine(_update_job_status(job_id, JobStatus.dead_letter, str(e))))
             raise e
