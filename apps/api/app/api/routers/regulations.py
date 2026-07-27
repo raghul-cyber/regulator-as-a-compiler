@@ -222,6 +222,7 @@ class RequirementResponse(BaseModel):
     rejection_reason: Optional[str] = None
     reviewed_by_user_id: Optional[UUID] = None
     reviewed_at: Optional[datetime] = None
+    search_score: Optional[float] = None
 
 class PaginatedRequirementsResponse(BaseModel):
     items: list[RequirementResponse]
@@ -241,7 +242,9 @@ async def get_regulation_requirements(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    from sqlalchemy import func
+    from sqlalchemy import func, text
+    from app.models.documents import DocumentSection
+    from app.models.requirements import RequirementEmbedding
     
     # Get the regulation's current version
     stmt_reg = select(Regulation).where(Regulation.id == id)
@@ -250,7 +253,10 @@ async def get_regulation_requirements(
     if not reg or not reg.current_version_id:
         raise HTTPException(status_code=404, detail="Regulation or version not found")
         
-    query = select(Requirement).where(Requirement.regulation_version_id == reg.current_version_id)
+    query = select(Requirement, DocumentSection.raw_text, RequirementEmbedding.embedding)\
+        .outerjoin(DocumentSection, Requirement.section_id == DocumentSection.id)\
+        .outerjoin(RequirementEmbedding, Requirement.id == RequirementEmbedding.requirement_id)\
+        .where(Requirement.regulation_version_id == reg.current_version_id)
     
     if type:
         query = query.where(Requirement.type == type)
@@ -258,22 +264,54 @@ async def get_regulation_requirements(
         query = query.where(Requirement.severity == severity)
     if status:
         query = query.where(Requirement.validation_status == status)
-    if search:
-        # Full text search using the GIN index on description
-        from sqlalchemy import text
-        # simple tsquery implementation, in prod use plainto_tsquery or similar
-        query = query.where(text("to_tsvector('english', description) @@ plainto_tsquery('english', :search)")).params(search=search)
         
-    # Count total
-    count_query = select(func.count()).select_from(query.subquery())
-    total = (await db.execute(count_query)).scalar() or 0
-    
-    # Pagination & sort
-    query = query.order_by(Requirement.created_at.desc())
-    query = query.offset((page - 1) * size).limit(size)
-    
     result = await db.execute(query)
-    requirements = result.scalars().all()
+    rows = result.all()
+    
+    if search:
+        search_vec = None
+        try:
+            from app.pipelines.dedup import generate_embedding
+            search_vec = await generate_embedding(search, db)
+        except Exception:
+            search_vec = None
+            
+        search_lower = search.lower().strip()
+        search_terms = search_lower.split()
+        scored_items = []
+        
+        for req, sec_text, emb in rows:
+            full_text = f"{req.title} {req.description} {sec_text or ''}".lower()
+            
+            matches = sum(full_text.count(term) for term in search_terms)
+            kw_score = min(1.0, matches * 0.15) if matches > 0 else 0.0
+            
+            if search_lower in full_text:
+                kw_score = min(1.0, kw_score + 0.3)
+                
+            sem_score = 0.0
+            if search_vec and emb is not None:
+                try:
+                    dot = sum(a * b for a, b in zip(search_vec, emb))
+                    sem_score = max(0.0, float(dot))
+                except Exception:
+                    sem_score = 0.0
+                    
+            combined_score = (kw_score * 2.0) + sem_score
+            
+            if kw_score > 0.0 or sem_score > 0.25:
+                req.search_score = round(combined_score, 4)
+                scored_items.append((req, combined_score))
+                
+        scored_items.sort(key=lambda x: x[1], reverse=True)
+        requirements = [x[0] for x in scored_items]
+        total = len(requirements)
+        paginated = requirements[(page - 1) * size : page * size]
+    else:
+        requirements = [row[0] for row in rows]
+        requirements.sort(key=lambda r: r.created_at, reverse=True)
+        total = len(requirements)
+        paginated = requirements[(page - 1) * size : page * size]
     
     return PaginatedRequirementsResponse(
         items=[
@@ -293,9 +331,10 @@ async def get_regulation_requirements(
                 validation_status=r.validation_status,
                 rejection_reason=r.rejection_reason,
                 reviewed_by_user_id=r.reviewed_by_user_id,
-                reviewed_at=r.reviewed_at
+                reviewed_at=r.reviewed_at,
+                search_score=getattr(r, 'search_score', None)
             )
-            for r in requirements
+            for r in paginated
         ],
         total=total,
         page=page,
@@ -350,7 +389,8 @@ async def get_regulation_diff(
             title=r.title, description=r.description, conditions=r.conditions, actions=r.actions,
             severity=r.severity, evidence_required=r.evidence_required, references=r.references,
             confidence_score=float(r.confidence_score), validation_status=r.validation_status,
-            rejection_reason=r.rejection_reason, reviewed_by_user_id=r.reviewed_by_user_id, reviewed_at=r.reviewed_at
+            rejection_reason=r.rejection_reason, reviewed_by_user_id=r.reviewed_by_user_id, reviewed_at=r.reviewed_at,
+            search_score=getattr(r, 'search_score', None)
         )
 
     added = []
