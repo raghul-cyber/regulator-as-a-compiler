@@ -21,6 +21,7 @@ from app.pipelines.chunking import chunk_document
 from app.pipelines.llm_extraction import process_chunk_extraction
 from app.pipelines.dedup import deduplicate_requirements, persist_embeddings
 from app.pipelines.validation_routing import route_requirements
+from app.pipelines.diff_engine import compute_version_diff
 from app.models.requirements import Requirement, RequirementType, Severity, ValidationStatus
 from pydantic import Field
 from typing import Optional
@@ -117,9 +118,13 @@ async def upload_regulation(
     # Now link it back
     reg_version.source_document_id = source_doc_id
 
+    previous_version_id = None
     # Update regulation's current version if it's the first one
     if not regulation.current_version_id:
         regulation.current_version_id = reg_version.id
+    else:
+        previous_version_id = regulation.current_version_id
+        
 
     # 6. Audit Log
     audit_log = AuditLog(
@@ -141,46 +146,33 @@ async def upload_regulation(
 
     await db.commit()
 
-    # --- Phase 5: LLM Extraction, Dedup, Validation ---
-    try:
-        await extract_document_text(source_doc_id, db)
-        await segment_document(source_doc_id, db)
-        
-        # 1. Chunking
-        chunks = await chunk_document(source_doc_id, db)
-        
-        # 2. LLM Extraction
-        all_new_reqs = []
-        for chunk in chunks:
-            reqs = await process_chunk_extraction(chunk, reg_version.id, db)
-            all_new_reqs.extend(reqs)
-            
-        # 3. Deduplication
-        unique_reqs = await deduplicate_requirements(all_new_reqs, db)
-        
-        # 4. Validation Routing
-        routed_reqs = route_requirements(unique_reqs)
-        
-        # Persist requirements
-        db.add_all(routed_reqs)
-        await db.flush()  # Flush so requirements get IDs
-        
-        # 5. Persist Embeddings
-        await persist_embeddings(routed_reqs, db)
-        
-        # Update RegulationVersion status-like label
-        reg_version.version_label = "Processed"
-        await db.commit()
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).error(f"Pipeline failed for {source_doc_id}: {e}")
-        reg_version.version_label = "Failed Pipeline"
-        await db.commit()
+    # --- Phase 12: Async Ingestion via Celery ---
+    from app.models.jobs import BackgroundJob, JobStatus
+    
+    # Create BackgroundJob
+    job = BackgroundJob(
+        job_type="ingestion",
+        status=JobStatus.pending,
+        payload={
+            "reg_version_id": str(reg_version.id),
+            "source_doc_id": str(source_doc_id),
+            "previous_version_id": str(previous_version_id) if previous_version_id else None
+        }
+    )
+    db.add(job)
+    await db.commit()
+    
+    # Dispatch task
+    from app.worker.tasks import task_run_ingestion
+    task_run_ingestion.apply_async(
+        args=[str(job.id), str(reg_version.id), str(source_doc_id), str(previous_version_id) if previous_version_id else None],
+        queue="ingestion"
+    )
 
     return RegulationUploadResponse(
         regulation_id=regulation.id,
         regulation_version_id=reg_version.id,
-        job_id="job_placeholder_123"
+        job_id=str(job.id)
     )
 
 @router.get("/{id}")
@@ -309,3 +301,71 @@ async def get_regulation_requirements(
         page=page,
         size=size
     )
+
+from app.models.diffs import RequirementDiff
+
+class DiffResponse(BaseModel):
+    added: list[RequirementResponse]
+    removed: list[RequirementResponse]
+    modified: list[dict] # Contains {"old": RequirementResponse, "new": RequirementResponse}
+
+@router.get("/{id}/diff", response_model=DiffResponse)
+async def get_regulation_diff(
+    id: UUID,
+    from_version: Optional[UUID] = None,
+    to_version: Optional[UUID] = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    # If to_version is not provided, use current_version
+    stmt_reg = select(Regulation).where(Regulation.id == id)
+    reg = (await db.execute(stmt_reg)).scalar_one_or_none()
+    
+    if not reg or not reg.current_version_id:
+        raise HTTPException(status_code=404, detail="Regulation or version not found")
+        
+    target_version_id = to_version or reg.current_version_id
+    
+    # We query the RequirementDiff for this target_version
+    diff_stmt = select(RequirementDiff).where(RequirementDiff.regulation_version_id == target_version_id)
+    diffs = (await db.execute(diff_stmt)).scalars().all()
+    
+    if not diffs:
+        return DiffResponse(added=[], removed=[], modified=[])
+        
+    # Gather IDs to fetch requirements
+    req_ids = set()
+    for d in diffs:
+        if d.old_requirement_id: req_ids.add(d.old_requirement_id)
+        if d.new_requirement_id: req_ids.add(d.new_requirement_id)
+        
+    reqs_stmt = select(Requirement).where(Requirement.id.in_(req_ids))
+    reqs_result = (await db.execute(reqs_stmt)).scalars().all()
+    reqs_map = {r.id: r for r in reqs_result}
+    
+    def to_resp(r):
+        if not r: return None
+        return RequirementResponse(
+            id=r.id, regulation_version_id=r.regulation_version_id, section_id=r.section_id, type=r.type,
+            title=r.title, description=r.description, conditions=r.conditions, actions=r.actions,
+            severity=r.severity, evidence_required=r.evidence_required, references=r.references,
+            confidence_score=float(r.confidence_score), validation_status=r.validation_status,
+            rejection_reason=r.rejection_reason, reviewed_by_user_id=r.reviewed_by_user_id, reviewed_at=r.reviewed_at
+        )
+
+    added = []
+    removed = []
+    modified = []
+    
+    for d in diffs:
+        if d.status == "added" and d.new_requirement_id in reqs_map:
+            added.append(to_resp(reqs_map[d.new_requirement_id]))
+        elif d.status == "removed" and d.old_requirement_id in reqs_map:
+            removed.append(to_resp(reqs_map[d.old_requirement_id]))
+        elif d.status == "modified" and d.old_requirement_id in reqs_map and d.new_requirement_id in reqs_map:
+            modified.append({
+                "old": to_resp(reqs_map[d.old_requirement_id]),
+                "new": to_resp(reqs_map[d.new_requirement_id])
+            })
+            
+    return DiffResponse(added=added, removed=removed, modified=modified)

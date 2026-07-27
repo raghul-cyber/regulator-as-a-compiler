@@ -240,7 +240,7 @@ def upgrade() -> None:
     ]
     for table in tenant_tables:
         op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;")
-        op.execute(f"CREATE POLICY tenant_isolation_policy ON {table} USING (org_id = current_setting('app.current_tenant')::uuid);")
+        op.execute(f"CREATE POLICY tenant_isolation_policy ON {table} USING (org_id = current_setting('app.current_tenant', true)::uuid);")
         
     # ### end Alembic commands ###
 
@@ -291,4 +291,16 @@ def downgrade() -> None:
     op.drop_table('organizations')
     
     op.execute('DROP EXTENSION IF EXISTS vector;')
+    
+    # Manually drop Postgres ENUM types left behind by Alembic
+    op.execute("DROP TYPE IF EXISTS plantype CASCADE;")
+    op.execute("DROP TYPE IF EXISTS filetype CASCADE;")
+    op.execute("DROP TYPE IF EXISTS notificationtype CASCADE;")
+    op.execute("DROP TYPE IF EXISTS reporttype CASCADE;")
+    op.execute("DROP TYPE IF EXISTS userrole CASCADE;")
+    op.execute("DROP TYPE IF EXISTS policystatus CASCADE;")
+    op.execute("DROP TYPE IF EXISTS requirementtype CASCADE;")
+    op.execute("DROP TYPE IF EXISTS severity CASCADE;")
+    op.execute("DROP TYPE IF EXISTS validationstatus CASCADE;")
+    op.execute("DROP TYPE IF EXISTS complianceresult CASCADE;")
     # ### end Alembic commands ###

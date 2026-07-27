@@ -9,6 +9,10 @@ from .reports import Report, Notification, ReportType, NotificationType
 from .audit import AuditLog
 from .api_keys import ApiKey
 from .llm_logs import LLMCallLog
+from .webhooks import Webhook
+from .diffs import RequirementDiff, DiffStatus
+from .impacts import ImpactRecord, ImpactStatus
+from .jobs import BackgroundJob, JobStatus
 
 __all__ = [
     "Base",
@@ -21,5 +25,12 @@ __all__ = [
     "Report", "Notification", "ReportType", "NotificationType",
     "AuditLog",
     "ApiKey",
-    "LLMCallLog"
+    "LLMCallLog",
+    "Webhook",
+    "RequirementDiff",
+    "DiffStatus",
+    "ImpactRecord",
+    "ImpactStatus",
+    "BackgroundJob",
+    "JobStatus"
 ]

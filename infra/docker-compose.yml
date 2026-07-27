@@ -21,7 +21,7 @@ services:
 
   api:
     build:
-      context: .
+      context: ..
       dockerfile: infra/Dockerfile.api
     container_name: rac-api
     ports:
@@ -36,14 +36,14 @@ services:
       - db
       - redis
     volumes:
-      - ./apps/api:/app
+      - ../apps/api:/app
 
   worker:
     build:
-      context: .
+      context: ..
       dockerfile: infra/Dockerfile.api
     container_name: rac-worker
-    command: celery -A app.worker.celery_app worker --loglevel=info
+    command: celery -A app.worker.celery_app worker -Q ingestion,compliance,reports,notifications --loglevel=info
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:password@db:5432/rac_db
       - REDIS_URL=redis://redis:6379/0
@@ -54,7 +54,7 @@ services:
       - redis
       - api
     volumes:
-      - ./apps/api:/app
+      - ../apps/api:/app
 
 volumes:
   postgres_data:

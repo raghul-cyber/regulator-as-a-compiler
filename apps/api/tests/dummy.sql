@@ -1,0 +1,5 @@
+INSERT INTO regulations (id, name, jurisdiction, source_url) VALUES ('c1111111-1111-1111-1111-111111111111', 'T', 'T', 'T');
+INSERT INTO regulation_versions (id, regulation_id, version_label, published_date, ingested_at) VALUES ('c2222222-2222-2222-2222-222222222222', 'c1111111-1111-1111-1111-111111111111', 'v1', '2026-01-01', '2026-01-01T00:00:00Z');
+INSERT INTO source_documents (id, regulation_version_id, file_type, storage_path, raw_text, ocr_used, page_count) VALUES ('c3333333-3333-3333-3333-333333333333', 'c2222222-2222-2222-2222-222222222222', 'pdf', 'x', '', false, 1);
+INSERT INTO document_sections (id, source_document_id, order_index, reference_label, raw_text) VALUES ('c4444444-4444-4444-4444-444444444444', 'c3333333-3333-3333-3333-333333333333', 1, '1', '1');
+INSERT INTO requirements (id, regulation_version_id, section_id, type, title, description, conditions, actions, severity, evidence_required, "references", confidence_score, validation_status) VALUES ('c5555555-5555-5555-5555-555555555555', 'c2222222-2222-2222-2222-222222222222', 'c4444444-4444-4444-4444-444444444444', 'obligation', 'T', 'T', '{}', '{}', 'low', '{}', '{}', 1.0, 'pending_review');
