@@ -29,8 +29,7 @@
 
 <!-- TODO: record demo.gif — see /docs/media/README.md for instructions -->
 <div align="center">
-  <img src="./docs/media/demo_placeholder.png" alt="Demo: Uploading GDPR, extracting requirements, and evaluating compliance API" width="85%" style="border-radius: 12px; border: 1px solid #374151; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);" />
-  <p><em>From raw PDF upload to automated API enforcement in under 60 seconds.</em></p>
+  <p><em>End-to-end demo recording in progress. See <a href="./docs/media/README.md">/docs/media/README.md</a> for recording instructions and script.</em></p>
 </div>
 
 ---
