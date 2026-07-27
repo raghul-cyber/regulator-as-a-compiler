@@ -22,3 +22,5 @@ tiktoken==0.8.0
 httpx==0.27.2
 
 reportlab==4.1.0
+sentry-sdk==2.66.1
+python-json-logger==4.1.0

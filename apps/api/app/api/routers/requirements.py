@@ -143,12 +143,16 @@ async def get_similar_requirements(
     result = await db.execute(stmt)
     candidates = result.all()
     
+    import math
     similar = []
     for req, emb in candidates:
         if emb is not None:
             try:
                 dot = sum(a * b for a, b in zip(target_emb.embedding, emb))
-                sim = max(0.0, float(dot))
+                norm_a = math.sqrt(sum(x * x for x in target_emb.embedding))
+                norm_b = math.sqrt(sum(y * y for y in emb))
+                sim = (dot / (norm_a * norm_b)) if norm_a > 0 and norm_b > 0 else 0.0
+                sim = max(0.0, min(1.0, float(sim)))
                 similar.append((req, sim))
             except Exception:
                 pass
@@ -217,8 +221,12 @@ async def search_all_requirements(
             sem_score = 0.0
             if search_vec and emb is not None:
                 try:
+                    import math
                     dot = sum(a * b for a, b in zip(search_vec, emb))
-                    sem_score = max(0.0, float(dot))
+                    norm_a = math.sqrt(sum(x * x for x in search_vec))
+                    norm_b = math.sqrt(sum(y * y for y in emb))
+                    sim = (dot / (norm_a * norm_b)) if norm_a > 0 and norm_b > 0 else 0.0
+                    sem_score = max(0.0, min(1.0, float(sim)))
                 except Exception:
                     sem_score = 0.0
             combined_score = (kw_score * 2.0) + sem_score

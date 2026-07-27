@@ -292,8 +292,12 @@ async def get_regulation_requirements(
             sem_score = 0.0
             if search_vec and emb is not None:
                 try:
+                    import math
                     dot = sum(a * b for a, b in zip(search_vec, emb))
-                    sem_score = max(0.0, float(dot))
+                    norm_a = math.sqrt(sum(x * x for x in search_vec))
+                    norm_b = math.sqrt(sum(y * y for y in emb))
+                    sim = (dot / (norm_a * norm_b)) if norm_a > 0 and norm_b > 0 else 0.0
+                    sem_score = max(0.0, min(1.0, float(sim)))
                 except Exception:
                     sem_score = 0.0
                     

@@ -12,8 +12,10 @@ class Settings(BaseSettings):
     S3_BUCKET: str
     S3_ACCESS_KEY: str
     S3_SECRET_KEY: str
-    SENTRY_DSN: str
-    FRONTEND_ORIGIN: AnyHttpUrl | str
+    SENTRY_DSN: Optional[str] = None
+    LOG_LEVEL: str = "INFO"
+    ENVIRONMENT: str = "development"
+    FRONTEND_ORIGIN: AnyHttpUrl | str = "http://localhost:3000"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

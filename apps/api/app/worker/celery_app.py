@@ -34,3 +34,11 @@ celery_app.conf.update(
     task_track_started=True,
     task_time_limit=3600, # 1 hour max
 )
+
+from celery.signals import worker_init
+from app.core.logging_config import setup_logging_and_sentry
+
+@worker_init.connect
+def on_worker_init(**kwargs):
+    setup_logging_and_sentry()
+
