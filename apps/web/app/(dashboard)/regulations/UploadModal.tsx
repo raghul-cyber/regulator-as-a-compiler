@@ -50,11 +50,49 @@ export default function UploadModal({ isOpen, onClose }: { isOpen: boolean; onCl
       }
 
       const data = await res.json();
-      onClose();
-      router.push(`/regulations/${data.regulation_id}`);
+      
+      // Poll for job completion
+      if (data.job_id) {
+        setLoading(true);
+        // We'll update the text to show it's processing
+        let pollCount = 0;
+        const pollInterval = setInterval(async () => {
+          try {
+            pollCount++;
+            if (pollCount > 60) { // 10 minutes timeout (10s intervals)
+               clearInterval(pollInterval);
+               setError("Processing is taking too long. Please check back later.");
+               setLoading(false);
+               return;
+            }
+            
+            const jobRes = await fetch(`http://localhost:8000/api/v1/jobs/${data.job_id}`, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            
+            if (jobRes.ok) {
+              const jobData = await jobRes.json();
+              if (jobData.status === "completed") {
+                clearInterval(pollInterval);
+                setLoading(false);
+                onClose();
+                router.push(`/regulations/${data.regulation_id}`);
+              } else if (jobData.status === "failed" || jobData.status === "dead_letter") {
+                clearInterval(pollInterval);
+                setError(jobData.error_message || "Processing failed");
+                setLoading(false);
+              }
+            }
+          } catch (e) {
+            console.error("Polling error:", e);
+          }
+        }, 3000); // Poll every 3 seconds for demo purposes
+      } else {
+        onClose();
+        router.push(`/regulations/${data.regulation_id}`);
+      }
     } catch (err: any) {
       setError(err.message || "An unexpected error occurred");
-    } finally {
       setLoading(false);
     }
   };

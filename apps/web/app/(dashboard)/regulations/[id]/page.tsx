@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
-import { FileText, Loader2, ArrowLeft, CheckCircle2, AlertCircle } from "lucide-react";
+import { FileText, Loader2, ArrowLeft, CheckCircle2, AlertCircle, Download } from "lucide-react";
 import Link from "next/link";
 import { RequirementBrowser } from "@/components/requirements/RequirementBrowser";
 
@@ -94,6 +94,37 @@ export default function RegulationDetail() {
               {regulation.name}
             </h1>
           </div>
+          {regulation.status === 'Processed' && (
+            <div className="flex gap-2">
+              <button 
+                onClick={async () => {
+                  const token = await getToken();
+                  const res = await fetch(`http://localhost:8000/api/v1/regulations/${id}/export`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                  });
+                  if (res.ok) {
+                    const blob = await res.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${regulation.name.replace(/\s+/g, '_')}_export.json`;
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                  }
+                }}
+                className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-gray-200 bg-white hover:bg-gray-100 hover:text-gray-900 h-9 px-4 py-2"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export JSON
+              </button>
+              <Link 
+                href={`/regulations/${id}/diff`}
+                className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring border border-gray-200 bg-white hover:bg-gray-100 hover:text-gray-900 h-9 px-4 py-2"
+              >
+                View Changes
+              </Link>
+            </div>
+          )}
         </div>
 
         {regulation.status === 'Processed' ? (
