@@ -1,0 +1,20 @@
+[
+    {
+      "text": "Article 5. Principles relating to processing of personal data. 1. Personal data shall be: (a) processed lawfully, fairly and in a transparent manner in relation to the data subject;",
+      "expected_requirements": [
+        {
+          "type": "obligation",
+          "severity": "high"
+        }
+      ]
+    },
+    {
+      "text": "Article 32. Security of processing. 1. Taking into account the state of the art, the costs of implementation and the nature, scope, context and purposes of processing as well as the risk of varying likelihood and severity for the rights and freedoms of natural persons, the controller and the processor shall implement appropriate technical and organisational measures to ensure a level of security appropriate to the risk.",
+      "expected_requirements": [
+        {
+          "type": "obligation",
+          "severity": "high"
+        }
+      ]
+    }
+]

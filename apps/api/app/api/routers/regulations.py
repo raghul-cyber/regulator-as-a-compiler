@@ -17,6 +17,10 @@ from app.models.audit import AuditLog
 from app.core.storage import storage_service
 from app.pipelines.extraction import extract_document_text
 from app.pipelines.segmentation import segment_document
+from app.pipelines.chunking import chunk_document
+from app.pipelines.llm_extraction import process_chunk_extraction
+from app.pipelines.dedup import deduplicate_requirements, persist_embeddings
+from app.pipelines.validation_routing import route_requirements
 
 router = APIRouter(prefix="/api/regulations", tags=["regulations"])
 
@@ -134,20 +138,40 @@ async def upload_regulation(
 
     await db.commit()
 
-    # --- Phase 4: Synchronous pipeline execution ---
-    # In a later phase, this will be dispatched to Celery via job_id.
-    # For now, we run it inline.
+    # --- Phase 5: LLM Extraction, Dedup, Validation ---
     try:
         await extract_document_text(source_doc_id, db)
         await segment_document(source_doc_id, db)
         
+        # 1. Chunking
+        chunks = await chunk_document(source_doc_id, db)
+        
+        # 2. LLM Extraction
+        all_new_reqs = []
+        for chunk in chunks:
+            reqs = await process_chunk_extraction(chunk, reg_version.id, db)
+            all_new_reqs.extend(reqs)
+            
+        # 3. Deduplication
+        unique_reqs = await deduplicate_requirements(all_new_reqs, db)
+        
+        # 4. Validation Routing
+        routed_reqs = route_requirements(unique_reqs)
+        
+        # Persist requirements
+        db.add_all(routed_reqs)
+        await db.flush()  # Flush so requirements get IDs
+        
+        # 5. Persist Embeddings
+        await persist_embeddings(routed_reqs, db)
+        
         # Update RegulationVersion status-like label
-        reg_version.version_label = "Extracted"
+        reg_version.version_label = "Processed"
         await db.commit()
     except Exception as e:
         import logging
         logging.getLogger(__name__).error(f"Pipeline failed for {source_doc_id}: {e}")
-        reg_version.version_label = "Failed Extraction"
+        reg_version.version_label = "Failed Pipeline"
         await db.commit()
 
     return RegulationUploadResponse(

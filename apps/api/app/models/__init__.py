@@ -8,6 +8,7 @@ from .policies import Policy, SystemMapping, ComplianceCheck, PolicyStatus, Comp
 from .reports import Report, Notification, ReportType, NotificationType
 from .audit import AuditLog
 from .api_keys import ApiKey
+from .llm_logs import LLMCallLog
 
 __all__ = [
     "Base",
@@ -19,5 +20,6 @@ __all__ = [
     "Policy", "SystemMapping", "ComplianceCheck", "PolicyStatus", "ComplianceResult",
     "Report", "Notification", "ReportType", "NotificationType",
     "AuditLog",
-    "ApiKey"
+    "ApiKey",
+    "LLMCallLog"
 ]
