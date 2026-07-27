@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routers import webhooks, org, regulations
+from app.api.routers import webhooks, org, regulations, requirements
 
 app = FastAPI(title="Regulation-as-Code Compiler API")
 
@@ -15,6 +15,7 @@ app.add_middleware(
 app.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
 app.include_router(org.router, prefix="/api", tags=["org"])
 app.include_router(regulations.router, tags=["regulations"])
+app.include_router(requirements.router, tags=["requirements"])
 
 @app.get("/health")
 async def health_check():

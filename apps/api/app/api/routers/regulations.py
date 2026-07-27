@@ -21,6 +21,9 @@ from app.pipelines.chunking import chunk_document
 from app.pipelines.llm_extraction import process_chunk_extraction
 from app.pipelines.dedup import deduplicate_requirements, persist_embeddings
 from app.pipelines.validation_routing import route_requirements
+from app.models.requirements import Requirement, RequirementType, Severity, ValidationStatus
+from pydantic import Field
+from typing import Optional
 
 router = APIRouter(prefix="/api/regulations", tags=["regulations"])
 
@@ -195,10 +198,114 @@ async def get_regulation(
     if not regulation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Regulation not found")
         
+    status_label = "unknown"
+    if regulation.current_version_id:
+        stmt_ver = select(RegulationVersion).where(RegulationVersion.id == regulation.current_version_id)
+        ver = (await db.execute(stmt_ver)).scalar_one_or_none()
+        if ver:
+            status_label = ver.version_label
+
     return {
         "id": regulation.id,
         "name": regulation.name,
         "jurisdiction": regulation.jurisdiction,
         "current_version_id": regulation.current_version_id,
-        "status": "processing" # hardcoded for Phase 3
+        "status": status_label
     }
+
+class RequirementResponse(BaseModel):
+    id: UUID
+    regulation_version_id: UUID
+    section_id: Optional[UUID] = None
+    type: RequirementType
+    title: str
+    description: str
+    conditions: dict
+    actions: dict
+    severity: Severity
+    evidence_required: dict
+    references: dict
+    confidence_score: float
+    validation_status: ValidationStatus
+    rejection_reason: Optional[str] = None
+    reviewed_by_user_id: Optional[UUID] = None
+    reviewed_at: Optional[datetime] = None
+
+class PaginatedRequirementsResponse(BaseModel):
+    items: list[RequirementResponse]
+    total: int
+    page: int
+    size: int
+
+@router.get("/{id}/requirements", response_model=PaginatedRequirementsResponse)
+async def get_regulation_requirements(
+    id: UUID,
+    type: Optional[RequirementType] = None,
+    severity: Optional[Severity] = None,
+    status: Optional[ValidationStatus] = None,
+    search: Optional[str] = None,
+    page: int = 1,
+    size: int = 50,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    from sqlalchemy import func
+    
+    # Get the regulation's current version
+    stmt_reg = select(Regulation).where(Regulation.id == id)
+    reg = (await db.execute(stmt_reg)).scalar_one_or_none()
+    
+    if not reg or not reg.current_version_id:
+        raise HTTPException(status_code=404, detail="Regulation or version not found")
+        
+    query = select(Requirement).where(Requirement.regulation_version_id == reg.current_version_id)
+    
+    if type:
+        query = query.where(Requirement.type == type)
+    if severity:
+        query = query.where(Requirement.severity == severity)
+    if status:
+        query = query.where(Requirement.validation_status == status)
+    if search:
+        # Full text search using the GIN index on description
+        from sqlalchemy import text
+        # simple tsquery implementation, in prod use plainto_tsquery or similar
+        query = query.where(text("to_tsvector('english', description) @@ plainto_tsquery('english', :search)")).params(search=search)
+        
+    # Count total
+    count_query = select(func.count()).select_from(query.subquery())
+    total = (await db.execute(count_query)).scalar() or 0
+    
+    # Pagination & sort
+    query = query.order_by(Requirement.created_at.desc())
+    query = query.offset((page - 1) * size).limit(size)
+    
+    result = await db.execute(query)
+    requirements = result.scalars().all()
+    
+    return PaginatedRequirementsResponse(
+        items=[
+            RequirementResponse(
+                id=r.id,
+                regulation_version_id=r.regulation_version_id,
+                section_id=r.section_id,
+                type=r.type,
+                title=r.title,
+                description=r.description,
+                conditions=r.conditions,
+                actions=r.actions,
+                severity=r.severity,
+                evidence_required=r.evidence_required,
+                references=r.references,
+                confidence_score=float(r.confidence_score),
+                validation_status=r.validation_status,
+                rejection_reason=r.rejection_reason,
+                reviewed_by_user_id=r.reviewed_by_user_id,
+                reviewed_at=r.reviewed_at
+            )
+            for r in requirements
+        ],
+        total=total,
+        page=page,
+        size=size
+    )

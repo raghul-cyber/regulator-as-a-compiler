@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
-import { FileText, Loader2, ArrowLeft, CheckCircle2 } from "lucide-react";
+import { FileText, Loader2, ArrowLeft, CheckCircle2, AlertCircle } from "lucide-react";
 import Link from "next/link";
+import { RequirementBrowser } from "@/components/requirements/RequirementBrowser";
 
 export default function RegulationDetail() {
   const params = useParams();
@@ -14,6 +15,7 @@ export default function RegulationDetail() {
   const [regulation, setRegulation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"overview" | "review">("overview");
 
   useEffect(() => {
     const fetchRegulation = async () => {
@@ -76,9 +78,15 @@ export default function RegulationDetail() {
               <span className="bg-indigo-100 text-indigo-800 text-xs font-semibold px-2.5 py-0.5 rounded-full">
                 {regulation.jurisdiction}
               </span>
-              <span className="bg-yellow-100 text-yellow-800 text-xs font-semibold px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                <Loader2 size={12} className="animate-spin" />
-                Processing
+              <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full flex items-center gap-1 ${
+                regulation.status === 'Processed' ? 'bg-green-100 text-green-800' : 
+                regulation.status.includes('Failed') ? 'bg-red-100 text-red-800' :
+                'bg-yellow-100 text-yellow-800'
+              }`}>
+                {regulation.status !== 'Processed' && !regulation.status.includes('Failed') && <Loader2 size={12} className="animate-spin" />}
+                {regulation.status === 'Processed' && <CheckCircle2 size={12} />}
+                {regulation.status.includes('Failed') && <AlertCircle size={12} />}
+                {regulation.status}
               </span>
             </div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
@@ -88,39 +96,57 @@ export default function RegulationDetail() {
           </div>
         </div>
 
-        <div className="p-6 bg-gray-50">
-          <div className="max-w-md mx-auto text-center py-12">
-            <div className="relative w-24 h-24 mx-auto mb-6">
-              <div className="absolute inset-0 border-4 border-indigo-100 rounded-full"></div>
-              <div className="absolute inset-0 border-4 border-indigo-500 rounded-full border-t-transparent animate-spin"></div>
-              <FileText className="absolute inset-0 m-auto text-indigo-500" size={32} />
+        {regulation.status === 'Processed' ? (
+          <div>
+            <div className="flex border-b border-slate-200">
+              <button 
+                onClick={() => setActiveTab("overview")}
+                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === "overview" ? "border-indigo-500 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}
+              >
+                Requirement Browser
+              </button>
+              <button 
+                onClick={() => setActiveTab("review")}
+                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === "review" ? "border-indigo-500 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}
+              >
+                Review Queue
+              </button>
             </div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">Analyzing Document...</h3>
-            <p className="text-gray-500">
-              The AI extraction pipeline is currently processing the regulation document. 
-              This may take a few minutes depending on the size of the file.
-            </p>
-            
-            <div className="mt-8 space-y-4 text-left bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-              <div className="flex items-center gap-3 text-sm text-gray-700">
-                <CheckCircle2 className="text-green-500" size={18} />
-                <span>Document Uploaded</span>
-              </div>
-              <div className="flex items-center gap-3 text-sm text-indigo-600 font-medium">
-                <Loader2 className="animate-spin" size={18} />
-                <span>Extracting requirements and structure</span>
-              </div>
-              <div className="flex items-center gap-3 text-sm text-gray-400">
-                <div className="w-[18px] h-[18px] rounded-full border-2 border-gray-300"></div>
-                <span>Generating embeddings</span>
-              </div>
-              <div className="flex items-center gap-3 text-sm text-gray-400">
-                <div className="w-[18px] h-[18px] rounded-full border-2 border-gray-300"></div>
-                <span>Finalizing metadata</span>
-              </div>
+            <div className="p-6 bg-slate-50/30">
+              {activeTab === "overview" && (
+                <RequirementBrowser regulationId={id} isReviewQueue={false} />
+              )}
+              {activeTab === "review" && (
+                <RequirementBrowser regulationId={id} isReviewQueue={true} />
+              )}
             </div>
           </div>
-        </div>
+        ) : regulation.status.includes('Failed') ? (
+          <div className="p-6 bg-gray-50">
+            <div className="max-w-md mx-auto text-center py-12">
+              <AlertCircle className="mx-auto text-red-500 mb-4" size={48} />
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Processing Failed</h3>
+              <p className="text-gray-500">
+                The extraction pipeline failed. Please check the logs.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="p-6 bg-gray-50">
+            <div className="max-w-md mx-auto text-center py-12">
+              <div className="relative w-24 h-24 mx-auto mb-6">
+                <div className="absolute inset-0 border-4 border-indigo-100 rounded-full"></div>
+                <div className="absolute inset-0 border-4 border-indigo-500 rounded-full border-t-transparent animate-spin"></div>
+                <FileText className="absolute inset-0 m-auto text-indigo-500" size={32} />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Analyzing Document...</h3>
+              <p className="text-gray-500">
+                The AI extraction pipeline is currently processing the regulation document. 
+                This may take a few minutes depending on the size of the file.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

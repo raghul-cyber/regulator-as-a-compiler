@@ -42,6 +42,7 @@ class Requirement(Base, TimestampMixin):
     validation_status: Mapped[ValidationStatus] = mapped_column(Enum(ValidationStatus))
     reviewed_by_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(pg.TIMESTAMP(timezone=True), nullable=True)
+    rejection_reason: Mapped[str | None] = mapped_column(String, nullable=True)
 
     __table_args__ = (
         Index("ix_requirements_reg_sev_val", "regulation_version_id", "severity", "validation_status"),
