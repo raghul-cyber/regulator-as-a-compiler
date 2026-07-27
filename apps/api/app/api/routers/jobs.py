@@ -74,6 +74,17 @@ async def requeue_job(
     job.status = JobStatus.pending
     job.error_message = None
     job.retries = 0
+    
+    audit_log = AuditLog(
+        id=uuid4(),
+        org_id=user.org_id,
+        actor_id=user.id,
+        action="job.requeued",
+        entity_type="job",
+        entity_id=job.id,
+        metadata_payload={"job_type": job.job_type}
+    )
+    db.add(audit_log)
     await db.commit()
     await db.refresh(job)
     
