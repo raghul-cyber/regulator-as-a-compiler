@@ -21,11 +21,67 @@ export type Requirement = {
   rejection_reason?: string;
   reviewed_by_user_id?: string;
   reviewed_at?: string;
+  search_score?: number;
 };
 
 interface RequirementBrowserProps {
   regulationId: string;
   isReviewQueue?: boolean;
+}
+
+function SimilarRequirementsPanel({ requirementId }: { requirementId: string }) {
+  const { getToken } = useAuth();
+  const [similar, setSimilar] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadSimilar() {
+      try {
+        const token = await getToken();
+        const res = await fetch(`http://localhost:8000/api/requirements/${requirementId}/similar`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setSimilar(data);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadSimilar();
+  }, [requirementId]);
+
+  if (loading) return <div className="mt-6 p-4 bg-white/60 border border-slate-200 rounded-lg text-xs text-slate-400">Finding semantic neighbors via pgvector...</div>;
+  if (similar.length === 0) return null;
+
+  return (
+    <div className="mt-6 p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl shadow-sm">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-indigo-600 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
+          Similar Requirements (pgvector semantic nearest neighbors)
+        </span>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {similar.map((item) => (
+          <div key={item.id} className="p-3 bg-white rounded-lg border border-indigo-50 shadow-2xs hover:border-indigo-200 transition-all flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="font-semibold text-slate-900 text-xs line-clamp-1">{item.title}</span>
+                <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xxs font-bold rounded-full">
+                  {(item.similarity_score * 100).toFixed(0)}% match
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 line-clamp-2">{item.description}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export function RequirementBrowser({ regulationId, isReviewQueue = false }: RequirementBrowserProps) {
@@ -218,6 +274,11 @@ export function RequirementBrowser({ regulationId, isReviewQueue = false }: Requ
                               <AlertTriangle size={14} />
                             </div>
                           )}
+                          {req.search_score !== undefined && req.search_score !== null && (
+                            <span className="ml-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xxs font-bold rounded-full border border-blue-200">
+                              Score: {req.search_score}
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-4">
@@ -346,6 +407,8 @@ export function RequirementBrowser({ regulationId, isReviewQueue = false }: Requ
                                 )}
                               </div>
                             </div>
+                            
+                            <SimilarRequirementsPanel requirementId={req.id} />
                           </div>
                         </td>
                       </tr>
