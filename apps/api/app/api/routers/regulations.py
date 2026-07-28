@@ -164,8 +164,9 @@ async def upload_regulation(
     
     # Dispatch task
     from app.worker.tasks import task_run_ingestion
+    from app.core.logging_config import request_id_var
     task_run_ingestion.apply_async(
-        args=[str(job.id), str(reg_version.id), str(source_doc_id), str(previous_version_id) if previous_version_id else None],
+        args=[str(job.id), str(reg_version.id), str(source_doc_id), str(previous_version_id) if previous_version_id else None, request_id_var.get()],
         queue="ingestion"
     )
 

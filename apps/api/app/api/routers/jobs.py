@@ -91,9 +91,10 @@ async def requeue_job(
     # Re-dispatch based on job_type
     if job.job_type == "ingestion":
         from app.worker.tasks import task_run_ingestion
+        from app.core.logging_config import request_id_var
         payload = job.payload or {}
         task_run_ingestion.apply_async(
-            args=[str(job.id), payload.get("reg_version_id"), payload.get("source_doc_id"), payload.get("previous_version_id")],
+            args=[str(job.id), payload.get("reg_version_id"), payload.get("source_doc_id"), payload.get("previous_version_id"), request_id_var.get()],
             queue="ingestion"
         )
     elif job.job_type == "compliance":

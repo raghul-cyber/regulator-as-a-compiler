@@ -45,6 +45,18 @@ async def clerk_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             role="admin" 
         )
         db.add(new_user)
+        await db.flush()
+
+        from app.models.audit import AuditLog
+        audit_log = AuditLog(
+            org_id=new_org.id,
+            actor_id=new_user.id,
+            action="user.created",
+            entity_type="user",
+            entity_id=new_user.id,
+            metadata_payload={"email": email}
+        )
+        db.add(audit_log)
         await db.commit()
 
     return {"success": True}
