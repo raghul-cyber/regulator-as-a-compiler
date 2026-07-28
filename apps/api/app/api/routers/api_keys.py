@@ -29,7 +29,7 @@ class ApiKeyResponse(BaseModel):
     created_at: datetime
     revoked_at: datetime | None
 
-@router.post("/", response_model=ApiKeyCreateResponse)
+@router.post("", response_model=ApiKeyCreateResponse)
 async def create_api_key(
     req: ApiKeyCreate,
     db: AsyncSession = Depends(get_db),
@@ -49,6 +49,7 @@ async def create_api_key(
         scopes=req.scopes
     )
     db.add(new_key)
+    await db.flush()
     
     audit_log = AuditLog(
         id=uuid4(),
@@ -70,7 +71,7 @@ async def create_api_key(
         created_at=new_key.created_at
     )
 
-@router.get("/", response_model=list[ApiKeyResponse])
+@router.get("", response_model=list[ApiKeyResponse])
 async def list_api_keys(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_role(UserRole.admin, UserRole.developer))

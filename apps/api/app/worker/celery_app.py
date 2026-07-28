@@ -33,12 +33,31 @@ celery_app.conf.update(
     enable_utc=True,
     task_track_started=True,
     task_time_limit=3600, # 1 hour max
+    worker_hijack_root_logger=False,
+    worker_redirect_stdouts=False,
 )
 
-from celery.signals import worker_init
-from app.core.logging_config import setup_logging_and_sentry
+from celery.signals import worker_init, before_task_publish, task_prerun
+from app.core.logging_config import setup_logging_and_sentry, request_id_var
 
 @worker_init.connect
 def on_worker_init(**kwargs):
     setup_logging_and_sentry()
+
+@before_task_publish.connect
+def on_before_task_publish(headers=None, **kwargs):
+    headers = headers or {}
+    req_id = request_id_var.get()
+    if req_id != "-":
+        headers["x-request-id"] = req_id
+
+@task_prerun.connect
+def on_task_prerun(task_id, task, *args, **kwargs):
+    import logging
+    logging.info(f"Task request context: {task.request}")
+    headers = getattr(task.request, 'headers', None) or task.request.get('headers') or {}
+    req_id = headers.get("x-request-id")
+    if req_id:
+        request_id_var.set(req_id)
+
 

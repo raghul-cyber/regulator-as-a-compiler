@@ -13,6 +13,7 @@
     "@clerk/nextjs": "^7.6.1",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
+    "@sentry/nextjs": "^10.68.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.27.0",

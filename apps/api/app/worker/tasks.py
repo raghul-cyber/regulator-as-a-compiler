@@ -33,7 +33,12 @@ async def _update_job_status(job_id: str, status: JobStatus, error: str = None):
 
 async def _run_ingestion_logic(reg_version_id: str, source_doc_id: str, previous_version_id: str = None):
     async with AsyncSessionLocal() as db:
-        from app.pipelines.pipeline import extract_document_text, segment_document, chunk_document, process_chunk_extraction, deduplicate_requirements, route_requirements, persist_embeddings
+        from app.pipelines.extraction import extract_document_text
+        from app.pipelines.segmentation import segment_document
+        from app.pipelines.chunking import chunk_document
+        from app.pipelines.llm_extraction import process_chunk_extraction
+        from app.pipelines.dedup import deduplicate_requirements, persist_embeddings
+        from app.pipelines.validation_routing import route_requirements
         from app.pipelines.diff_engine import compute_version_diff
         
         # We need the reg_version and regulation to update current_version_id
@@ -76,7 +81,10 @@ async def _run_ingestion_task(job_id: str, reg_version_id: str, source_doc_id: s
         raise e
 
 @celery_app.task(bind=True, max_retries=3)
-def task_run_ingestion(self, job_id: str, reg_version_id: str, source_doc_id: str, previous_version_id: str = None):
+def task_run_ingestion(self, job_id: str, reg_version_id: str, source_doc_id: str, previous_version_id: str = None, request_id: str = None):
+    from app.core.logging_config import request_id_var
+    if request_id:
+        request_id_var.set(request_id)
     logger.info(f"Starting ingestion job {job_id}")
     try:
         asyncio.run(with_clean_engine(_run_ingestion_task(job_id, reg_version_id, source_doc_id, previous_version_id)))

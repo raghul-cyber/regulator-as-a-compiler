@@ -3,6 +3,7 @@ import os
 import sys
 import uuid
 import time
+from datetime import date, datetime, timezone
 from httpx import AsyncClient, ASGITransport
 import sqlalchemy.dialects.postgresql as pg
 from sqlalchemy import select
@@ -14,9 +15,10 @@ from app.models.organizations import Organization, PlanType
 from app.models.users import User, UserRole
 from app.models.regulations import Regulation, RegulationVersion
 from app.models.requirements import Requirement, ValidationStatus, RequirementType, Severity
+from app.models.documents import SourceDocument, DocumentSection, FileType
 from app.models.api_keys import ApiKey
 async def setup_test_data():
-    async with async_session() as db:
+    async with AsyncSessionLocal() as db:
         # Create Org & Admin
         org = Organization(name="Test Org 9", plan="trial")
         db.add(org)
@@ -27,12 +29,19 @@ async def setup_test_data():
         await db.flush()
         
         # Create Regulation & Requirements
-        reg = Regulation(name="GDPR_Phase9", jurisdiction="EU")
+        reg = Regulation(name="GDPR_Phase9", jurisdiction="EU", source_url="http://test.com/gdpr.pdf")
         db.add(reg)
         await db.flush()
         
-        ver = RegulationVersion(regulation_id=reg.id, version_label="v1", source_document_id=None)
+        ver = RegulationVersion(regulation_id=reg.id, version_label="v1", source_document_id=None, published_date=date.today(), ingested_at=datetime.now(timezone.utc))
         db.add(ver)
+        await db.flush()
+        
+        doc = SourceDocument(regulation_version_id=ver.id, file_type=FileType.pdf, storage_path="x", raw_text="...", ocr_used=False, page_count=1)
+        db.add(doc)
+        await db.flush()
+        section = DocumentSection(source_document_id=doc.id, order_index=1, reference_label="Art 1", raw_text="Text")
+        db.add(section)
         await db.flush()
         
         # Add 3 Requirements: 2 Approved, 1 Draft
@@ -41,12 +50,13 @@ async def setup_test_data():
             status = ValidationStatus.approved if i < 2 else ValidationStatus.draft
             req = Requirement(
                 regulation_version_id=ver.id,
-                section_id=None,
+                section_id=section.id,
                 type=RequirementType.obligation,
                 title=f"Req {i}",
                 description="desc",
                 conditions={}, actions={},
                 severity=Severity.high,
+                evidence_required={}, references={}, confidence_score=0.95,
                 validation_status=status
             )
             db.add(req)
@@ -83,7 +93,7 @@ async def run_tests():
         key_admin = res.json()["raw_key"]
         
         # Verify DB only stores hash
-        async with async_session() as db:
+        async with AsyncSessionLocal() as db:
             keys = (await db.execute(select(ApiKey).where(ApiKey.org_id == org.id))).scalars().all()
             for k in keys:
                 assert not k.key_hash.startswith("sk_live_")
@@ -121,6 +131,11 @@ async def run_tests():
         print("Revoked key correctly rejected.")
 
         print("--- 4. Rate Limits ---")
+        import redis.asyncio as aioredis
+        from app.core.config import settings
+        r = aioredis.from_url(settings.REDIS_URL)
+        await r.flushall()
+        await r.aclose()
         # Admin key has 10 req/min (trial org)
         # Let's make 12 requests
         success_count = 0
