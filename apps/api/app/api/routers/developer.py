@@ -149,6 +149,22 @@ async def check_compliance(
         db.add(job)
         await db.commit()
         
+        from app.models.audit import AuditLog
+        from app.models.users import User
+        stmt_user = select(User).where(User.org_id == api_key.org_id).limit(1)
+        actor = (await db.execute(stmt_user)).scalar_one_or_none()
+        if actor:
+            audit_log = AuditLog(
+                org_id=api_key.org_id,
+                actor_id=actor.id,
+                action="compliance.check_async",
+                entity_type="compliance_check",
+                entity_id=check.id,
+                metadata_payload={"job_id": str(job.id)}
+            )
+            db.add(audit_log)
+            await db.commit()
+        
         from app.worker.tasks import task_check_compliance
         task_check_compliance.apply_async(
             args=[str(job.id), str(check.id)],
@@ -169,6 +185,22 @@ async def check_compliance(
         
     db.add(check)
     await db.commit()
+    
+    from app.models.audit import AuditLog
+    from app.models.users import User
+    stmt_user = select(User).where(User.org_id == api_key.org_id).limit(1)
+    actor = (await db.execute(stmt_user)).scalar_one_or_none()
+    if actor:
+        audit_log = AuditLog(
+            org_id=api_key.org_id,
+            actor_id=actor.id,
+            action="compliance.check_sync",
+            entity_type="compliance_check",
+            entity_id=check.id,
+            metadata_payload={"status": check.result.value}
+        )
+        db.add(audit_log)
+        await db.commit()
     
     return CheckComplianceResponseSync(
         status=check.result.value,
@@ -202,6 +234,22 @@ async def register_webhook(
     db.add(wh)
     await db.commit()
     await db.refresh(wh)
+    
+    from app.models.audit import AuditLog
+    from app.models.users import User
+    stmt_user = select(User).where(User.org_id == api_key.org_id).limit(1)
+    actor = (await db.execute(stmt_user)).scalar_one_or_none()
+    if actor:
+        audit_log = AuditLog(
+            org_id=api_key.org_id,
+            actor_id=actor.id,
+            action="webhook.created",
+            entity_type="webhook",
+            entity_id=wh.id,
+            metadata_payload={"url": wh.url, "event_types": wh.event_types}
+        )
+        db.add(audit_log)
+        await db.commit()
     
     return WebhookResponse(
         id=wh.id,
