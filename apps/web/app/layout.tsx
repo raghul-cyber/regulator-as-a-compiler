@@ -18,7 +18,7 @@ export default function RootLayout({
 }>) {
   return (
     <ClerkProvider>
-      <html lang="en" className={cn("dark", "font-sans", geist.variable)}>
+      <html lang="en" className={cn("dark", "font-sans", inter.variable)}>
         <body className={inter.className}>{children}</body>
       </html>
     </ClerkProvider>
