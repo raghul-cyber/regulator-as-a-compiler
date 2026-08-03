@@ -1,8 +1,8 @@
-import os
 from celery import Celery
 from kombu import Queue
+from app.core.config import settings
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+REDIS_URL = settings.REDIS_URL
 
 celery_app = Celery(
     "rac_worker",
