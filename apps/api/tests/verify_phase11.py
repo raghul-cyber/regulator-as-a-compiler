@@ -6,7 +6,7 @@ from uuid import uuid4
 
 # Set up environment and path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-os.environ["DATABASE_URL"] = "postgresql+asyncpg://postgres:password@db:5432/rac_db"
+os.environ["DATABASE_URL"] = "postgresql+asyncpg://postgres:password@localhost:5432/rac_db"
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
@@ -219,6 +219,8 @@ async def run_tests():
         
         # Override dependency
         mock_admin = User(id=uuid4(), clerk_user_id="admin_123", email="admin@test.com", org_id=org.id, role=UserRole.admin)
+        db.add(mock_admin)
+        await db.commit()
         mock_viewer = User(id=uuid4(), clerk_user_id="view_123", email="view@test.com", org_id=org.id, role=UserRole.developer)
         mock_other_org = User(id=uuid4(), clerk_user_id="other_123", email="other@test.com", org_id=uuid4(), role=UserRole.admin)
         

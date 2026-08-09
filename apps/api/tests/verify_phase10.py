@@ -1,9 +1,12 @@
 import asyncio
 import os
+import sys
 import io
 from uuid import uuid4
 from datetime import date, datetime, timezone
 import pytest
+
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select

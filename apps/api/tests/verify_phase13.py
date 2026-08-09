@@ -7,7 +7,7 @@ from datetime import date, datetime, timezone
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 if "DATABASE_URL" not in os.environ:
-    os.environ["DATABASE_URL"] = "postgresql+asyncpg://postgres:password@db:5432/rac_db"
+    os.environ["DATABASE_URL"] = "postgresql+asyncpg://postgres:password@localhost:5432/rac_db"
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker

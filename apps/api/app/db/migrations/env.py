@@ -41,7 +41,9 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = settings.DATABASE_URL
+    url = config.get_main_option("sqlalchemy.url")
+    if not url or url.startswith("driver://"):
+        url = str(settings.DATABASE_URL)
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -67,7 +69,11 @@ async def run_async_migrations() -> None:
     """
 
     configuration = config.get_section(config.config_ini_section, {})
-    configuration["sqlalchemy.url"] = settings.DATABASE_URL
+    url = config.get_main_option("sqlalchemy.url")
+    if url and not url.startswith("driver://"):
+        configuration["sqlalchemy.url"] = url
+    else:
+        configuration["sqlalchemy.url"] = str(settings.DATABASE_URL)
     connectable = async_engine_from_config(
         configuration,
         prefix="sqlalchemy.",
