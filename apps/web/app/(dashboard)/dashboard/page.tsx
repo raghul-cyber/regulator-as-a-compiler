@@ -40,16 +40,23 @@ interface DashboardSummary {
 }
 
 export default function DashboardPage() {
-  const { getToken, has } = useAuth();
+  const { getToken, has, isLoaded, isSignedIn } = useAuth();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const isAuditor = has({ role: "org:auditor" });
 
   useEffect(() => {
+    console.log("Auth state changed - isLoaded:", isLoaded, "isSignedIn:", isSignedIn);
     async function fetchSummary() {
+      if (!isLoaded) return;
       try {
         const token = await getToken();
+        console.log("Retrieved token:", token ? "Present (length " + token.length + ")" : "null");
+        if (!token) {
+           setError("No auth token available. Are you signed in?");
+           return; 
+        }
         const res = await fetch("http://localhost:8000/api/v1/dashboard/summary", {
           headers: {
             Authorization: `Bearer ${token}`
@@ -59,11 +66,12 @@ export default function DashboardPage() {
         const data = await res.json();
         setSummary(data);
       } catch (e: any) {
+        console.error("Error fetching summary:", e);
         setError(e.message);
       }
     }
     fetchSummary();
-  }, [getToken]);
+  }, [getToken, isLoaded, isSignedIn]);
 
   if (error) {
     return <div className="p-8 text-red-500">Error: {error}</div>;

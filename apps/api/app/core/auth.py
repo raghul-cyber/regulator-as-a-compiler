@@ -10,12 +10,27 @@ from app.core.config import settings
 
 security = HTTPBearer()
 
-# We only instantiate the client if CLERK_PUBLISHABLE_KEY is present
-# For local dev or tests, this might need handling
-# Example: pk_test_Y2xlcmsubG9jYWwuZGV2JA
+import base64
+
+def get_jwks_url():
+    pk = settings.CLERK_PUBLISHABLE_KEY
+    if not pk:
+        return "https://api.clerk.dev/v1/jwks"
+    parts = pk.split('_')
+    if len(parts) >= 3:
+        b64_str = parts[2]
+        b64_str += "=" * ((4 - len(b64_str) % 4) % 4)
+        try:
+            domain = base64.b64decode(b64_str).decode('utf-8')
+            if domain.endswith('$'):
+                domain = domain[:-1]
+            return f"https://{domain}/.well-known/jwks.json"
+        except Exception:
+            pass
+    return "https://api.clerk.dev/v1/jwks"
+
 try:
-    # A real implementation would parse the domain from the publishable key or use standard API
-    jwks_client = PyJWKClient("https://api.clerk.dev/v1/jwks")
+    jwks_client = PyJWKClient(get_jwks_url())
 except Exception:
     jwks_client = None
 
@@ -24,6 +39,7 @@ async def get_current_user(
     db: AsyncSession = Depends(get_db)
 ) -> User:
     token = credentials.credentials
+    print(f"Received token (first 10 chars): {token[:10]}... length: {len(token)}", flush=True)
     try:
         signing_key = jwks_client.get_signing_key_from_jwt(token)
         # Verify the JWT
@@ -41,10 +57,36 @@ async def get_current_user(
         user = result.scalar_one_or_none()
         
         if not user:
-            raise HTTPException(status_code=401, detail="User not found")
-        
+            # Autovivify user for local dev without webhooks
+            import uuid
+            from app.models.organizations import Organization
+            
+            org_stmt = select(Organization).limit(1)
+            org_res = await db.execute(org_stmt)
+            org = org_res.scalar_one_or_none()
+            
+            if not org:
+                org = Organization(id=uuid.uuid4(), name="Default Org", plan="standard")
+                db.add(org)
+                await db.commit()
+                await db.refresh(org)
+                
+            user = User(
+                id=uuid.uuid4(),
+                clerk_user_id=clerk_user_id,
+                org_id=org.id,
+                role=UserRole.admin,
+                email="auto@example.com"
+            )
+            db.add(user)
+            await db.commit()
+            await db.refresh(user)
+            
         return user
     except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"Auth error: {str(e)}", flush=True)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Could not validate credentials: {str(e)}",
